@@ -187,6 +187,15 @@
     transition:opacity .18s ease; text-shadow:0 0 12px rgba(0,0,0,.9);
   }
   .node-label .col{ color:var(--accent); margin-right:7px; }
+  /* invisible, finger-sized tap target sitting on each star — far more
+     reliable on touch than hit-testing the 3D dot */
+  .node-hit{
+    position:absolute; width:66px; height:66px; transform:translate(-50%,-50%);
+    border:none; background:transparent; border-radius:50%; padding:0; margin:0;
+    display:none; cursor:pointer; touch-action:manipulation;
+    -webkit-tap-highlight-color:rgba(255,255,255,.18);
+  }
+  .node-hit.on{ display:block; pointer-events:auto; }
 
   /* --- PROJECT MODAL ---------------------------------------- */
   #modal{
@@ -243,7 +252,7 @@
     <section class="hero">
       <div class="eyebrow" id="hero-eyebrow">— building for the small screen</div>
       <h1 id="hero-title">Worlds that fit<br>in your <em>pocket.</em></h1>
-      <p id="hero-sub">I design and ship products. Each one is a small universe — scroll in and explore the constellation.</p>
+      <p id="hero-sub">I design and ship B2C mobile apps. Each one is a small universe — scroll in and explore the constellation.</p>
       <div class="scroll-cue">scroll to enter</div>
     </section>
 
@@ -260,7 +269,7 @@
       <div class="kicker" id="land-kicker">touchdown</div>
       <h2 id="land-h2">Back on the ground — here’s the work, and the person behind it.</h2>
       <p class="lead" id="land-lead">
-        I’m a product builder focused on consumer apps: fast, opinionated, and made to be used every day.
+        I’m a mobile product builder focused on consumer apps: fast, opinionated, and made to be used every day.
         Above is the playful version; below is everything you’d actually want to know.
       </p>
 
@@ -282,7 +291,7 @@
       <div class="contact-wrap">
         <div>
           <div class="sec-label" style="margin-bottom:18px">say hello</div>
-          <h2 style="font-size:clamp(26px,4vw,40px)" id="contact-h">Got a role, an idea, or just want to talk products?</h2>
+          <h2 style="font-size:clamp(26px,4vw,40px)" id="contact-h">Got a role, an idea, or just want to talk apps?</h2>
           <p class="lead" id="contact-p">Drop a note — it lands straight in my inbox and I’ll get back fast.</p>
         </div>
         <div>
@@ -293,8 +302,8 @@
       </div>
 
       <footer>
-        <span id="foot-name">© <span></span> Tofi </span>
-        <span>Made with Three.js ✦</span>
+        <span id="foot-name">© <span></span> Your Name</span>
+        <span>Made with Three.js · vibe-coded ✦</span>
       </footer>
     </section>
   </main>
@@ -318,8 +327,7 @@
    ================================================================= */
 
 const PROFILE = {
-  name: "Your Name",
-  // social links shown in the landing panel
+  name: "Tofi",
   socials: [
     { label: "LinkedIn",  url: "https://www.linkedin.com/in/tofi-nour-81932b237/" },
     { label: "X",         url: "https://x.com/tooofi2__0" },
@@ -332,10 +340,10 @@ const PROFILE = {
 // `color` tints the node + its modal. Keep 4–8 for a clean sky.
 const PROJECTS = [
   {
-    title: "Fulora: Reader & Book Tracker",
-    tagline: "PDF & EPUB Reading companion",
-    description: "A B2C reading app for iOS  On-device offline reader, with streaks, gentle reminders, and cloud progress and syncing accross devices",
-    tags: ["iOS", "Swift", figma", "firebase", "cursor"],
+    title: "Fulora",
+    tagline: "PDF & EPUB reading companion",
+    description: "A B2C reading app for iOS. On-device offline reader, with streaks, gentle reminders, and cloud progress syncing across devices.",
+    tags: ["iOS", "Swift", "Figma", "Firebase", "Cursor"],
     color: "#ff8a5c",
     links: [ { label: "App Store", url: "https://share.google/X72YzrXWNWEita5WM" } ],
   },
@@ -464,6 +472,14 @@ PROJECTS.forEach((p,i)=>{
   lab.innerHTML = `<span class="col">✦</span>${p.title}`;
   document.getElementById("labels").appendChild(lab);
   ball.userData.label = lab;
+
+  // real tap target on the star (reliable on phones, unlike raycasting a dot)
+  const hit=document.createElement("button");
+  hit.className="node-hit";
+  hit.setAttribute("aria-label","Open "+p.title);
+  hit.addEventListener("click", (e)=>{ e.stopPropagation(); openModal(i); });
+  document.getElementById("labels").appendChild(hit);
+  ball.userData.hit = hit;
 });
 
 /* Faint connecting lines (each node to its 2 nearest neighbours) */
@@ -602,15 +618,23 @@ function tick(now){
     n.scale.setScalar(n.userData.baseScale);
     n.userData.halo.material.opacity = (n===hovered)?1:0.85;
 
-    // project to screen for the HTML label (world position, accounts for rotation)
+    // project to screen (world position, accounts for rotation)
     n.getWorldPosition(proj); proj.project(camera);
     const onScreen = proj.z<1 && Math.abs(proj.x)<1.3 && Math.abs(proj.y)<1.3;
-    const lab=n.userData.label;
+    const sx = (proj.x*0.5+0.5)*innerWidth, sy = (-proj.y*0.5+0.5)*innerHeight;
+    const lab=n.userData.label, hit=n.userData.hit;
     if(onScreen){
-      lab.style.left = ((proj.x*0.5+0.5)*innerWidth)+"px";
-      lab.style.top  = ((-proj.y*0.5+0.5)*innerHeight)+"px";
+      lab.style.left = sx+"px";
+      lab.style.top  = sy+"px";
       lab.style.opacity = (n===hovered)?1 : ((isTouch?0.9:0.5)*labelBand);
     } else lab.style.opacity=0;
+    // the tap button rides on the star and turns on whenever the star is visible
+    if(hit){
+      if(onScreen && labelBand>0.05){
+        hit.style.left = sx+"px"; hit.style.top = sy+"px";
+        hit.classList.add("on");
+      } else hit.classList.remove("on");
+    }
   });
 
   // HERO fades out as you enter
