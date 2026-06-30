@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Constellation — Portfolio Starter</title>
+
+<!-- Three.js r128 (global THREE build, no modules) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<style>
+  /* ============================================================
+     PALETTE  (space = cold cosmos, ground = warm landing)
+     ============================================================ */
+  :root{
+    --space-0:#06060f;      /* deep void */
+    --space-1:#0b0b1c;      /* nebula base */
+    --star:#e8ecff;         /* cool starlight */
+    --line:#5b54a8;         /* constellation lines */
+    --accent:#ff8a5c;       /* warm signature (the human in the cosmos) */
+    --ground:#f4efe9;       /* the landing — warm off-white */
+    --ink:#1a1822;          /* ground text */
+    --ink-soft:#5a5566;     /* ground secondary */
+    --font-space: ui-sans-serif, -apple-system, "Segoe UI", Roboto, system-ui, sans-serif;
+    --font-ground: Georgia, "Iowan Old Style", "Times New Roman", serif;
+    --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  html{ scroll-behavior:smooth; }
+  body{
+    background:var(--space-0);
+    color:var(--star);
+    font-family:var(--font-space);
+    -webkit-font-smoothing:antialiased;
+    overflow-x:hidden;
+  }
+
+  /* The WebGL canvas lives fixed behind everything ------------ */
+  #scene{
+    position:fixed; inset:0; width:100vw; height:100vh;
+    z-index:0; display:block;
+    transition:opacity .25s linear;
+  }
+
+  /* Scrollable content stack --------------------------------- */
+  #content{ position:relative; z-index:2; }
+
+  /* --- HERO ------------------------------------------------- */
+  .hero{
+    height:100vh; display:flex; flex-direction:column;
+    justify-content:center; padding:0 8vw;
+    pointer-events:none;            /* clicks fall through to canvas */
+  }
+  .eyebrow{
+    font-family:var(--font-mono); font-size:12px; letter-spacing:.32em;
+    text-transform:uppercase; color:var(--accent); opacity:.85; margin-bottom:18px;
+  }
+  .hero h1{
+    font-size:clamp(40px, 8.5vw, 104px); line-height:.96;
+    letter-spacing:-.03em; font-weight:800; max-width:14ch;
+  }
+  .hero h1 em{ font-style:normal; color:var(--accent); }
+  .hero p{
+    margin-top:24px; max-width:46ch; font-size:clamp(15px,1.6vw,19px);
+    color:#c6c8e0; line-height:1.55;
+  }
+  .scroll-cue{
+    position:absolute; bottom:34px; left:8vw;
+    font-family:var(--font-mono); font-size:11px; letter-spacing:.28em;
+    text-transform:uppercase; color:#8e90b8; display:flex; align-items:center; gap:10px;
+  }
+  .scroll-cue::before{
+    content:""; width:1px; height:34px; background:linear-gradient(var(--accent),transparent);
+    animation:cue 1.8s ease-in-out infinite;
+  }
+  @keyframes cue{ 0%,100%{transform:scaleY(.4);opacity:.4} 50%{transform:scaleY(1);opacity:1} }
+
+  /* --- JOURNEY (tall transparent interactive zone) ---------- */
+  .journey{ height:320vh; pointer-events:none; position:relative; }
+  .journey-hint{
+    position:sticky; top:50%; transform:translateY(-50%);
+    text-align:center; padding:0 20px;
+    opacity:0; transition:opacity .4s ease;
+  }
+  .journey-hint .tag{
+    font-family:var(--font-mono); font-size:12px; letter-spacing:.3em;
+    text-transform:uppercase; color:var(--accent);
+  }
+  .journey-hint .big{
+    margin-top:10px; font-size:clamp(20px,3.4vw,34px); font-weight:700; letter-spacing:-.01em;
+  }
+
+  /* --- LANDING (warm grounded panel) ------------------------ */
+  .landing{
+    position:relative; z-index:3;
+    background:var(--ground); color:var(--ink);
+    border-radius:34px 34px 0 0;
+    margin-top:-2px;
+    box-shadow:0 -60px 120px rgba(0,0,0,.6);
+    padding:clamp(56px,9vw,120px) 8vw clamp(60px,8vw,110px);
+  }
+  .landing .kicker{
+    font-family:var(--font-mono); font-size:12px; letter-spacing:.3em;
+    text-transform:uppercase; color:var(--accent); margin-bottom:14px;
+  }
+  .landing h2{
+    font-family:var(--font-ground); font-weight:400;
+    font-size:clamp(30px,5.4vw,58px); line-height:1.05; letter-spacing:-.01em;
+    max-width:18ch;
+  }
+  .landing .lead{
+    margin-top:22px; max-width:60ch; font-size:clamp(16px,1.7vw,20px);
+    line-height:1.65; color:var(--ink-soft);
+  }
+  .divider{ height:1px; background:rgba(26,24,34,.12); margin:clamp(48px,7vw,84px) 0; }
+
+  .sec-label{
+    font-family:var(--font-mono); font-size:12px; letter-spacing:.28em;
+    text-transform:uppercase; color:var(--ink-soft); margin-bottom:26px;
+    display:flex; align-items:center; gap:14px;
+  }
+  .sec-label::after{ content:""; flex:1; height:1px; background:rgba(26,24,34,.12); }
+
+  /* Projects grid (graceful, no-WebGL access to the same data) */
+  .grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:20px; }
+  .card{
+    text-align:left; background:#fff; border:1px solid rgba(26,24,34,.08);
+    border-radius:18px; padding:26px 24px; cursor:pointer;
+    transition:transform .25s ease, box-shadow .25s ease, border-color .25s ease;
+    color:var(--ink); font-family:var(--font-space);
+  }
+  .card:hover, .card:focus-visible{
+    transform:translateY(-4px);
+    box-shadow:0 18px 40px rgba(26,24,34,.12);
+    border-color:rgba(255,138,92,.5); outline:none;
+  }
+  .card .dot{ width:10px; height:10px; border-radius:50%; display:inline-block; }
+  .card h3{ font-size:20px; margin:14px 0 8px; letter-spacing:-.01em; }
+  .card .tagline{ color:var(--ink-soft); font-size:14.5px; line-height:1.5; }
+  .card .tags{ margin-top:16px; display:flex; flex-wrap:wrap; gap:8px; }
+  .card .tags span{
+    font-family:var(--font-mono); font-size:11px; letter-spacing:.04em;
+    background:rgba(26,24,34,.05); padding:4px 9px; border-radius:6px; color:var(--ink-soft);
+  }
+
+  /* Socials */
+  .socials{ display:flex; flex-wrap:wrap; gap:14px; }
+  .social{
+    font-family:var(--font-mono); font-size:13px; letter-spacing:.04em;
+    text-decoration:none; color:var(--ink);
+    border:1px solid rgba(26,24,34,.18); border-radius:999px;
+    padding:11px 20px; transition:all .2s ease; display:inline-flex; align-items:center; gap:9px;
+  }
+  .social:hover{ background:var(--ink); color:var(--ground); border-color:var(--ink); }
+  .social .swatch{ width:7px; height:7px; border-radius:50%; background:var(--accent); }
+
+  /* Contact */
+  .contact-wrap{ display:grid; grid-template-columns:1.1fr 1fr; gap:48px; align-items:start; }
+  .field{ display:flex; flex-direction:column; gap:7px; margin-bottom:18px; }
+  .field label{ font-family:var(--font-mono); font-size:11px; letter-spacing:.2em; text-transform:uppercase; color:var(--ink-soft); }
+  .field input, .field textarea{
+    font-family:var(--font-space); font-size:15px; color:var(--ink);
+    background:#fff; border:1px solid rgba(26,24,34,.18); border-radius:12px; padding:13px 15px;
+  }
+  .field input:focus, .field textarea:focus{ outline:2px solid var(--accent); border-color:transparent; }
+  .send-btn{
+    font-family:var(--font-space); font-weight:600; font-size:15px;
+    background:var(--ink); color:var(--ground); border:none; border-radius:999px;
+    padding:14px 30px; cursor:pointer; transition:transform .15s ease, background .2s ease;
+  }
+  .send-btn:hover{ transform:translateY(-2px); background:var(--accent); color:#fff; }
+
+  footer{
+    margin-top:clamp(60px,8vw,100px); padding-top:30px;
+    border-top:1px solid rgba(26,24,34,.12);
+    font-family:var(--font-mono); font-size:12px; color:var(--ink-soft);
+    display:flex; justify-content:space-between; flex-wrap:wrap; gap:12px;
+  }
+
+  /* --- 3D NODE LABELS (HTML projected over canvas) ---------- */
+  #labels{ position:fixed; inset:0; z-index:1; pointer-events:none; }
+  .node-label{
+    position:absolute; transform:translate(-50%,-140%);
+    font-family:var(--font-mono); font-size:12px; letter-spacing:.06em;
+    color:var(--star); white-space:nowrap; opacity:0;
+    transition:opacity .18s ease; text-shadow:0 0 12px rgba(0,0,0,.9);
+  }
+  .node-label .col{ color:var(--accent); margin-right:7px; }
+
+  /* --- PROJECT MODAL ---------------------------------------- */
+  #modal{
+    position:fixed; inset:0; z-index:50; display:none;
+    align-items:center; justify-content:center; padding:24px;
+    background:rgba(4,4,12,.78); backdrop-filter:blur(8px);
+  }
+  #modal.open{ display:flex; }
+  .modal-card{
+    width:min(560px,100%); background:#0e0e22;
+    border:1px solid rgba(255,255,255,.1); border-radius:22px;
+    padding:34px 32px; position:relative; animation:pop .28s cubic-bezier(.2,.9,.3,1.2);
+  }
+  @keyframes pop{ from{transform:scale(.94);opacity:0} to{transform:scale(1);opacity:1} }
+  .modal-card .mcol{ width:38px; height:5px; border-radius:99px; margin-bottom:22px; }
+  .modal-card h3{ font-size:27px; letter-spacing:-.02em; }
+  .modal-card .mtag{ color:var(--accent); font-family:var(--font-mono); font-size:13px; margin-top:6px; }
+  .modal-card p{ margin-top:18px; line-height:1.6; color:#c6c8e0; font-size:15.5px; }
+  .modal-tags{ margin-top:20px; display:flex; flex-wrap:wrap; gap:8px; }
+  .modal-tags span{ font-family:var(--font-mono); font-size:11px; background:rgba(255,255,255,.07); padding:5px 10px; border-radius:6px; color:#a9abce; }
+  .modal-links{ margin-top:26px; display:flex; flex-wrap:wrap; gap:12px; }
+  .modal-links a{
+    text-decoration:none; font-size:14px; font-weight:600; color:#0e0e22;
+    background:var(--accent); padding:11px 20px; border-radius:999px; transition:transform .15s ease;
+  }
+  .modal-links a.ghost{ background:transparent; color:var(--star); border:1px solid rgba(255,255,255,.25); }
+  .modal-links a:hover{ transform:translateY(-2px); }
+  .modal-close{
+    position:absolute; top:18px; right:18px; width:34px; height:34px; border-radius:50%;
+    background:rgba(255,255,255,.08); border:none; color:var(--star); font-size:18px; cursor:pointer;
+  }
+  .modal-close:hover{ background:rgba(255,255,255,.18); }
+
+  @media (max-width:760px){
+    .contact-wrap{ grid-template-columns:1fr; gap:30px; }
+    .landing{ border-radius:26px 26px 0 0; }
+  }
+  @media (prefers-reduced-motion:reduce){
+    html{ scroll-behavior:auto; }
+    .scroll-cue::before{ animation:none; }
+  }
+</style>
+</head>
+<body>
+
+  <!-- ===================== WebGL backdrop ===================== -->
+  <canvas id="scene"></canvas>
+  <div id="labels"></div>
+
+  <!-- ===================== Scroll content ===================== -->
+  <main id="content">
+
+    <!-- HERO -->
+    <section class="hero">
+      <div class="eyebrow" id="hero-eyebrow">— building for the small screen</div>
+      <h1 id="hero-title">Worlds that fit<br>in your <em>pocket.</em></h1>
+      <p id="hero-sub">I design and ship B2C mobile apps. Each one is a small universe — scroll in and explore the constellation.</p>
+      <div class="scroll-cue">scroll to enter</div>
+    </section>
+
+    <!-- JOURNEY: the interactive constellation lives in this transparent height -->
+    <section class="journey">
+      <div class="journey-hint" id="hint">
+        <div class="tag">the constellation</div>
+        <div class="big">Tap a glowing node to open a project</div>
+      </div>
+    </section>
+
+    <!-- LANDING: warm grounded panel -->
+    <section class="landing">
+      <div class="kicker" id="land-kicker">touchdown</div>
+      <h2 id="land-h2">Back on the ground — here’s the work, and the person behind it.</h2>
+      <p class="lead" id="land-lead">
+        I’m a mobile product builder focused on consumer apps: fast, opinionated, and made to be used every day.
+        Above is the playful version; below is everything you’d actually want to know.
+      </p>
+
+      <div class="divider"></div>
+
+      <!-- PROJECTS -->
+      <div class="sec-label">selected projects</div>
+      <div class="grid" id="project-grid"><!-- injected --></div>
+
+      <div class="divider"></div>
+
+      <!-- SOCIALS / ABOUT -->
+      <div class="sec-label">find me online</div>
+      <div class="socials" id="social-row"><!-- injected --></div>
+
+      <div class="divider"></div>
+
+      <!-- CONTACT -->
+      <div class="contact-wrap">
+        <div>
+          <div class="sec-label" style="margin-bottom:18px">say hello</div>
+          <h2 style="font-size:clamp(26px,4vw,40px)" id="contact-h">Got a role, an idea, or just want to talk apps?</h2>
+          <p class="lead" id="contact-p">Drop a note — it lands straight in my inbox and I’ll get back fast.</p>
+        </div>
+        <div>
+          <div class="field"><label for="c-name">Your name</label><input id="c-name" type="text" placeholder="Jane Doe" /></div>
+          <div class="field"><label for="c-msg">Message</label><textarea id="c-msg" rows="4" placeholder="What’s on your mind?"></textarea></div>
+          <button class="send-btn" id="c-send">Send message</button>
+        </div>
+      </div>
+
+      <footer>
+        <span id="foot-name">© <span></span> Your Name</span>
+        <span>Made with Three.js · vibe-coded ✦</span>
+      </footer>
+    </section>
+  </main>
+
+  <!-- ===================== Project modal ===================== -->
+  <div id="modal" aria-hidden="true">
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="m-title">
+      <button class="modal-close" id="m-close" aria-label="Close">×</button>
+      <div class="mcol" id="m-col"></div>
+      <h3 id="m-title"></h3>
+      <div class="mtag" id="m-tag"></div>
+      <p id="m-desc"></p>
+      <div class="modal-tags" id="m-tags"></div>
+      <div class="modal-links" id="m-links"></div>
+    </div>
+  </div>
+
+<script>
+/* =================================================================
+   ░░  EDIT ME  ░░  — everything you swap lives in these two blocks
+   ================================================================= */
+
+const PROFILE = {
+  name: "Your Name",
+  // social links shown in the landing panel
+  socials: [
+    { label: "LinkedIn",  url: "https://linkedin.com/in/you" },
+    { label: "GitHub",    url: "https://github.com/you" },
+    { label: "X",         url: "https://x.com/you" },
+    { label: "Instagram", url: "https://instagram.com/you" },
+    { label: "TikTok",    url: "https://tiktok.com/@you" },
+  ],
+  contactEmail: "you@example.com",
+};
+
+// Each project becomes one glowing node in the constellation.
+// `color` tints the node + its modal. Keep 4–8 for a clean sky.
+const PROJECTS = [
+  {
+    title: "Lumen",
+    tagline: "A daily journaling app with mood-aware prompts.",
+    description: "A B2C journaling app for iOS & Android. On-device sentiment shapes each day’s prompt, with streaks, gentle reminders, and a year-in-pixels view. 40k+ downloads in the first quarter.",
+    tags: ["iOS", "React Native", "On-device ML"],
+    color: "#ff8a5c",
+    links: [ { label: "App Store", url: "#" }, { label: "Case study", url: "#", ghost:true } ],
+  },
+  {
+    title: "Tempo",
+    tagline: "Habit tracking that feels like a game, not a chore.",
+    description: "Consumer habit tracker built around tiny wins and social accountability. Designed the streak economy and the onboarding loop; D7 retention up 22% after the redesign.",
+    tags: ["Swift", "Design", "Growth"],
+    color: "#5cc8ff",
+    links: [ { label: "Google Play", url: "#" } ],
+  },
+  {
+    title: "Plot",
+    tagline: "Find what to watch with friends, in 3 taps.",
+    description: "A social discovery app for film & TV. Built the real-time room feature so groups swipe to a shared match. Featured in the App Store ‘Apps We Love’.",
+    tags: ["Flutter", "Realtime", "Product"],
+    color: "#c08bff",
+    links: [ { label: "Visit", url: "#" }, { label: "GitHub", url: "#", ghost:true } ],
+  },
+  {
+    title: "Seed",
+    tagline: "Micro-investing for people who hate spreadsheets.",
+    description: "Round-up investing app aimed at first-time investors. Owned the whole onboarding → first-deposit funnel and the explanatory motion design that made it click.",
+    tags: ["Fintech", "iOS", "Motion"],
+    color: "#7fffb0",
+    links: [ { label: "App Store", url: "#" } ],
+  },
+  {
+    title: "Echo",
+    tagline: "Voice-first notes that organize themselves.",
+    description: "Capture a thought by speaking; Echo transcribes, tags, and threads it. Prototyped the always-listening widget and the privacy model users actually trusted.",
+    tags: ["AI", "React Native", "Audio"],
+    color: "#ffd45c",
+    links: [ { label: "Waitlist", url: "#" } ],
+  },
+  {
+    title: "Nimbus",
+    tagline: "A weather app worth opening every morning.",
+    description: "Hyper-local weather with a calm, glanceable design and one delightful animation per condition. A side project that became a top-100 weather app in two countries.",
+    tags: ["Side project", "SwiftUI", "Design"],
+    color: "#5c7bff",
+    links: [ { label: "App Store", url: "#" }, { label: "Story", url: "#", ghost:true } ],
+  },
+];
+
+/* =================================================================
+   ░░  Below here is the engine — tweak freely, but it works as-is
+   ================================================================= */
+
+const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/* ---- inject ground-panel content from the data --------------- */
+(function hydrate(){
+  document.getElementById("foot-name").querySelector("span").textContent = new Date().getFullYear();
+  document.getElementById("foot-name").lastChild && (document.getElementById("foot-name").childNodes[2].textContent = " " + PROFILE.name);
+
+  const grid = document.getElementById("project-grid");
+  PROJECTS.forEach((p,i)=>{
+    const c = document.createElement("button");
+    c.className = "card"; c.setAttribute("aria-label", "Open " + p.title);
+    c.innerHTML = `<span class="dot" style="background:${p.color}"></span>
+      <h3>${p.title}</h3>
+      <div class="tagline">${p.tagline}</div>
+      <div class="tags">${p.tags.map(t=>`<span>${t}</span>`).join("")}</div>`;
+    c.addEventListener("click", ()=>openModal(i));
+    grid.appendChild(c);
+  });
+
+  const row = document.getElementById("social-row");
+  PROFILE.socials.forEach(s=>{
+    const a = document.createElement("a");
+    a.className="social"; a.href=s.url; a.target="_blank"; a.rel="noopener";
+    a.innerHTML = `<span class="swatch"></span>${s.label}`;
+    row.appendChild(a);
+  });
+
+  document.getElementById("c-send").addEventListener("click", ()=>{
+    const name = document.getElementById("c-name").value || "Someone";
+    const msg  = document.getElementById("c-msg").value || "";
+    const subject = encodeURIComponent(`Hello from ${name} — via your portfolio`);
+    const body = encodeURIComponent(msg + `\n\n— ${name}`);
+    window.location.href = `mailto:${PROFILE.contactEmail}?subject=${subject}&body=${body}`;
+  });
+})();
+
+/* ---- THREE.js scene ----------------------------------------- */
+const canvas = document.getElementById("scene");
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true });
+const baseDPR = Math.min(window.devicePixelRatio || 1, 2);
+renderer.setPixelRatio(baseDPR);
+
+const scene  = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(55, innerWidth/innerHeight, 0.1, 100);
+
+/* Soft radial glow texture, reused for every node halo */
+function glowTexture(){
+  const s=128, cv=document.createElement("canvas"); cv.width=cv.height=s;
+  const ctx=cv.getContext("2d");
+  const g=ctx.createRadialGradient(s/2,s/2,0,s/2,s/2,s/2);
+  g.addColorStop(0,"rgba(255,255,255,1)");
+  g.addColorStop(.25,"rgba(255,255,255,.7)");
+  g.addColorStop(1,"rgba(255,255,255,0)");
+  ctx.fillStyle=g; ctx.fillRect(0,0,s,s);
+  return new THREE.CanvasTexture(cv);
+}
+const GLOW = glowTexture();
+
+/* Starfield (two parallax layers) */
+function makeStars(count, spread, size, opacity){
+  const geo=new THREE.BufferGeometry();
+  const pos=new Float32Array(count*3);
+  for(let i=0;i<count*3;i++) pos[i]=(Math.random()-0.5)*spread;
+  geo.setAttribute("position", new THREE.BufferAttribute(pos,3));
+  const mat=new THREE.PointsMaterial({ color:0xe8ecff, size, transparent:true, opacity, depthWrite:false });
+  return new THREE.Points(geo,mat);
+}
+const starsFar  = makeStars(1400, 60, 0.08, 0.6);
+const starsNear = makeStars(500, 30, 0.16, 0.9);
+scene.add(starsFar, starsNear);
+
+/* Central "seed" — a glowing wireframe the camera dives toward */
+const core = new THREE.Mesh(
+  new THREE.IcosahedronGeometry(0.9, 1),
+  new THREE.MeshBasicMaterial({ color:0xff8a5c, wireframe:true, transparent:true, opacity:.5 })
+);
+scene.add(core);
+const coreGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map:GLOW, color:0xff8a5c, transparent:true, opacity:.5, blending:THREE.AdditiveBlending, depthWrite:false }));
+coreGlow.scale.set(3.4,3.4,1); scene.add(coreGlow);
+
+/* Constellation group: one node per project on a sphere */
+const constellation = new THREE.Group();
+scene.add(constellation);
+const nodes = [];
+const R = 3.6;
+PROJECTS.forEach((p,i)=>{
+  // even-ish spherical distribution (fibonacci sphere)
+  const y = 1 - (i/(PROJECTS.length-1||1))*2;
+  const r = Math.sqrt(1-y*y);
+  const theta = i*2.399963;
+  const pos = new THREE.Vector3(Math.cos(theta)*r, y, Math.sin(theta)*r).multiplyScalar(R);
+
+  const col = new THREE.Color(p.color);
+  const ball = new THREE.Mesh(
+    new THREE.SphereGeometry(0.16, 24, 24),
+    new THREE.MeshBasicMaterial({ color: col })
+  );
+  ball.position.copy(pos);
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map:GLOW, color:col, transparent:true, opacity:.85, blending:THREE.AdditiveBlending, depthWrite:false }));
+  halo.scale.set(1.1,1.1,1); ball.add(halo);
+
+  ball.userData = { index:i, halo, baseScale:1, pos };
+  constellation.add(ball);
+  nodes.push(ball);
+
+  // HTML label
+  const lab=document.createElement("div");
+  lab.className="node-label";
+  lab.innerHTML = `<span class="col">✦</span>${p.title}`;
+  document.getElementById("labels").appendChild(lab);
+  ball.userData.label = lab;
+});
+
+/* Faint connecting lines (each node to its 2 nearest neighbours) */
+const linePts=[];
+nodes.forEach((a,i)=>{
+  const d = nodes.map((b,j)=>({j, dist:a.position.distanceTo(b.position)}))
+                 .filter(o=>o.j!==i).sort((x,y)=>x.dist-y.dist).slice(0,2);
+  d.forEach(o=>{ linePts.push(a.position.clone(), nodes[o.j].position.clone()); });
+});
+const lineGeo=new THREE.BufferGeometry().setFromPoints(linePts);
+const lines=new THREE.LineSegments(lineGeo, new THREE.LineBasicMaterial({ color:0x5b54a8, transparent:true, opacity:.32 }));
+constellation.add(lines);
+
+/* ---- interaction: raycast the nodes ------------------------- */
+const ray=new THREE.Raycaster();
+const mouse=new THREE.Vector2(-2,-2);
+let hovered=null;
+const parallax={x:0,y:0};
+const isTouch = matchMedia("(hover: none), (pointer: coarse)").matches || ("ontouchstart" in window);
+
+window.addEventListener("pointermove", e=>{
+  if(e.pointerType==="touch") return;          // taps are handled separately below
+  mouse.x=(e.clientX/innerWidth)*2-1;
+  mouse.y=-(e.clientY/innerHeight)*2+1;
+  parallax.x=(e.clientX/innerWidth-0.5);
+  parallax.y=(e.clientY/innerHeight-0.5);
+});
+
+// Resolve which node is under a screen point, with a finger-friendly tolerance.
+// Raycasts fresh at the event location, so it never relies on hover state
+// (which phones don't have) — that's what made taps miss on mobile.
+const _pv=new THREE.Vector3();
+function pickAt(clientX, clientY){
+  if(progress<=0.03 || progress>=0.85) return null;          // only inside the cosmos
+  ray.setFromCamera(new THREE.Vector2((clientX/innerWidth)*2-1, -(clientY/innerHeight)*2+1), camera);
+  const hits=ray.intersectObjects(nodes,false);
+  if(hits.length) return hits[0].object;
+  // fallback: nearest node within a comfortable touch target
+  let best=null, bestD=Math.max(60, innerWidth*0.07);
+  nodes.forEach(n=>{
+    n.getWorldPosition(_pv); _pv.project(camera);
+    if(_pv.z>=1) return;
+    const sx=(_pv.x*0.5+0.5)*innerWidth, sy=(-_pv.y*0.5+0.5)*innerHeight;
+    const d=Math.hypot(sx-clientX, sy-clientY);
+    if(d<bestD){ bestD=d; best=n; }
+  });
+  return best;
+}
+
+// One handler for both mouse clicks and taps.
+window.addEventListener("click", e=>{
+  if(document.getElementById("modal").classList.contains("open")) return;
+  const hit=pickAt(e.clientX, e.clientY);
+  if(hit) openModal(hit.userData.index);
+});
+
+/* ---- modal -------------------------------------------------- */
+const modal=document.getElementById("modal");
+function openModal(i){
+  const p=PROJECTS[i];
+  document.getElementById("m-col").style.background=p.color;
+  document.getElementById("m-title").textContent=p.title;
+  document.getElementById("m-tag").textContent=p.tagline;
+  document.getElementById("m-desc").textContent=p.description;
+  document.getElementById("m-tags").innerHTML=p.tags.map(t=>`<span>${t}</span>`).join("");
+  document.getElementById("m-links").innerHTML=(p.links||[]).map(l=>
+    `<a class="${l.ghost?'ghost':''}" href="${l.url}" target="_blank" rel="noopener">${l.label}</a>`).join("");
+  modal.classList.add("open"); modal.setAttribute("aria-hidden","false");
+}
+function closeModal(){ modal.classList.remove("open"); modal.setAttribute("aria-hidden","true"); }
+document.getElementById("m-close").addEventListener("click", closeModal);
+modal.addEventListener("click", e=>{ if(e.target===modal) closeModal(); });
+window.addEventListener("keydown", e=>{ if(e.key==="Escape") closeModal(); });
+
+/* ---- scroll → progress ------------------------------------- */
+let progress=0, target=0;
+function computeTarget(){
+  const landing=document.querySelector(".landing");
+  const handoff=landing.offsetTop;                 // cosmos ends when ground reaches top
+  target=Math.min(Math.max(scrollY/handoff,0),1);
+}
+window.addEventListener("scroll", computeTarget, {passive:true});
+window.addEventListener("resize", onResize);
+computeTarget();
+
+const lerp=(a,b,t)=>a+(b-a)*t;
+const clamp=(v,a,b)=>Math.min(Math.max(v,a),b);
+function smooth(t){ return t*t*(3-2*t); }            // smoothstep
+
+/* ---- render loop ------------------------------------------- */
+const proj=new THREE.Vector3();
+let t0=performance.now();
+function tick(now){
+  const dt=Math.min((now-t0)/1000,0.05); t0=now;
+  progress = reduceMotion ? target : lerp(progress, target, 0.08);
+  const p = progress;
+
+  // camera dolly: far → into the constellation → punch through
+  const z = p<0.7 ? lerp(13, 4.2, smooth(p/0.7)) : lerp(4.2, 1.4, smooth((p-0.7)/0.3));
+  camera.position.z = z;
+  if(!reduceMotion){
+    const orbit = now*0.00006;
+    camera.position.x = Math.sin(orbit)*0.8 + parallax.x*0.9;
+    camera.position.y = Math.cos(orbit)*0.5 - parallax.y*0.7;
+  }
+  camera.lookAt(0,0,0);
+
+  // ambient life
+  if(!reduceMotion){
+    constellation.rotation.y += dt*0.06;
+    constellation.rotation.x = Math.sin(now*0.0002)*0.12;
+    core.rotation.x += dt*0.2; core.rotation.y += dt*0.25;
+    starsFar.rotation.y += dt*0.005;
+    starsNear.rotation.y += dt*0.012;
+  }
+
+  // core fades as you pass it
+  const coreFade = clamp(1-(p-0.45)/0.25, 0, 1);
+  core.material.opacity = 0.5*coreFade;
+  coreGlow.material.opacity = 0.5*coreFade;
+
+  // node hover via raycast (only while cosmos is visible & interactive)
+  const interactive = p>0.06 && p<0.72;
+  if(interactive){
+    ray.setFromCamera(mouse, camera);
+    const hits=ray.intersectObjects(nodes,false);
+    const top=hits.length?hits[0].object:null;
+    if(top!==hovered){ hovered=top; canvas.style.cursor=hovered?"pointer":"default"; }
+  } else if(hovered){ hovered=null; canvas.style.cursor="default"; }
+
+  // node scale + label placement
+  const labelBand = clamp((p-0.06)/0.1,0,1) * clamp(1-(p-0.62)/0.1,0,1); // fade labels in/out
+  nodes.forEach(n=>{
+    const want = (n===hovered)?1.55:1;
+    n.userData.baseScale = lerp(n.userData.baseScale, want, 0.15);
+    n.scale.setScalar(n.userData.baseScale);
+    n.userData.halo.material.opacity = (n===hovered)?1:0.85;
+
+    // project to screen for the HTML label (world position, accounts for rotation)
+    n.getWorldPosition(proj); proj.project(camera);
+    const onScreen = proj.z<1 && Math.abs(proj.x)<1.3 && Math.abs(proj.y)<1.3;
+    const lab=n.userData.label;
+    if(onScreen){
+      lab.style.left = ((proj.x*0.5+0.5)*innerWidth)+"px";
+      lab.style.top  = ((-proj.y*0.5+0.5)*innerHeight)+"px";
+      lab.style.opacity = (n===hovered)?1 : ((isTouch?0.9:0.5)*labelBand);
+    } else lab.style.opacity=0;
+  });
+
+  // HERO fades out as you enter
+  const heroFade=clamp(1-p/0.12,0,1);
+  document.querySelector(".hero").style.opacity=heroFade;
+  // HINT shows mid-journey
+  document.getElementById("hint").style.opacity = clamp((p-0.14)/0.08,0,1)*clamp(1-(p-0.6)/0.08,0,1);
+
+  // PIXELATION + fade as you leave the cosmos (p 0.72 → 1)
+  const exit=clamp((p-0.72)/0.28,0,1);
+  if(!reduceMotion && exit>0){
+    const dpr=lerp(baseDPR, 0.05, exit);
+    renderer.setPixelRatio(dpr);
+    canvas.style.imageRendering = exit>0.02 ? "pixelated" : "auto";
+  } else if(exit===0){
+    renderer.setPixelRatio(baseDPR); canvas.style.imageRendering="auto";
+  }
+  canvas.style.opacity = (1-exit).toFixed(3);
+  canvas.style.pointerEvents = (exit>0.9)?"none":"auto";
+
+  renderer.render(scene,camera);
+  requestAnimationFrame(tick);
+}
+
+function onResize(){
+  camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight,false);
+  computeTarget();
+}
+onResize();
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>
